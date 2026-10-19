@@ -56,6 +56,23 @@ body.v-bracket .pOnly{display:none!important}
 .sec{margin:18px 0 8px;font-size:15px;color:var(--mute)}
 details.waiting{margin-top:14px}
 details.waiting summary{cursor:pointer;color:var(--mute)}
+.chart-wrap{overflow:auto;max-height:calc(100vh - 150px);border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.chart{position:relative}
+.chart svg{position:absolute;left:0;top:0;pointer-events:none}
+.chart svg path{fill:none;stroke:var(--mute);stroke-width:1;opacity:.45}
+.chd{position:absolute;font-size:12px;font-weight:700;color:var(--mute);text-align:center;background:var(--bg);border-radius:6px;padding:2px 0}
+.cc{position:absolute;box-sizing:border-box;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer;font-size:12px;line-height:1.35;overflow:hidden}
+.cc:hover{border-color:var(--acc)}
+.cc .ch{font-size:10px;color:var(--mute);padding:0 6px;background:var(--card);border-bottom:1px solid var(--line)}
+.cc .cr{display:flex;justify-content:space-between;gap:4px;padding:0 6px;height:18px;align-items:center}
+.cc .cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc .cn i{color:var(--mute);font-style:normal;font-size:11px}
+.cc .cs{font-weight:700;min-width:12px;text-align:right}
+.cc .cr.w{background:color-mix(in srgb,var(--ok) 22%,transparent);font-weight:700}
+.cc.ready{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.cc.live{border-color:#d98a00;box-shadow:0 0 0 1px #d98a00}
+.cc.done{opacity:.8}
+.cc.dim{opacity:.22}
 .mini{font-size:14px;padding:4px 10px}
 .games{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:15px}
 .games .winline{margin-top:4px;font-weight:700;color:var(--ok)}
@@ -99,6 +116,11 @@ details>summary.mini{cursor:pointer;display:inline-block;color:var(--mute);paddi
 </main>
 </div>
 
+<dialog id="mdlg">
+  <div id="mbody"></div>
+  <div style="text-align:right;margin-top:8px"><button type="button" id="mclose">閉じる</button></div>
+</dialog>
+
 <dialog id="dlg">
   <form method="dialog">
     <h3 style="margin-top:0">名前を取り込む</h3>
@@ -138,7 +160,7 @@ const SB_URL = "https://pnosjjeghcfsxxprcdfr.supabase.co";
 const SB_KEY = "sb_publishable_dDd-zIg5OFIbj3MKImMWHw_QVupH0Hc";
 const $ = s => document.querySelector(s);
 const ROLE_LABEL = { admin: "運営", reception: "受付", attendant: "アテンド", results: "結果入力係" };
-let token = "", me = null, players = [], bracket = [], brList = [], view = "players", filter = "all", callMode = false;
+let token = "", me = null, players = [], bracket = [], brList = [], view = "players", filter = "all", callMode = false, brMode = "chart";
 
 try { token = localStorage.getItem("reception_token") || ""; } catch (e) {}
 
@@ -267,9 +289,9 @@ function renderBracket() {
   const done = bracket.filter(r => r.winner && hit(r)).sort((a, b) => key(b) - key(a));
   const waiting = bracket.filter(r => !r.winner && (r.a_name == null || r.b_name == null) && hit(r)).sort((a, b) => key(a) - key(b));
   const name = bracket[0].bracket;
-  let html = `<div class="brbar"><b>対戦表: ${esc(name)}</b><span class="mute">全${bracket.length}試合 / 終了${bracket.filter(r => r.winner).length}</span>`;
-  if (isAdmin() && brList.length) html += `<select id="brSel">${brList.map(b => `<option value="${esc(b.name)}"${b.active ? " selected" : ""}>${esc(b.name)}(${b.matches}試合)</option>`).join("")}</select>`;
-  html += `</div><div class="sec">次に行う試合 (${ready.length})</div>`;
+  const bar = brBarHtml(name);
+  if (isAdmin() && brMode === "chart") return renderChart(bar, hit);
+  let html = bar + `<div class="sec">次に行う試合 (${ready.length})</div>`;
   html += ready.length ? ready.map(r => matchHtml(r, maxW, maxL, true)).join("") : `<div class="empty">今すぐ行える試合はありません</div>`;
   if (done.length) html += `<details class="waiting"><summary>終了した試合 (${done.length})</summary>${done.map(r => matchHtml(r, maxW, maxL, false)).join("")}</details>`;
   if (waiting.length) html += `<details class="waiting"><summary>対戦相手が決まっていない試合 (${waiting.length})</summary>${waiting.map(r => matchHtml(r, maxW, maxL, false)).join("")}</details>`;
@@ -277,7 +299,88 @@ function renderBracket() {
   list.innerHTML = html;
   list.querySelectorAll("details").forEach((d, i) => { if (open[i]) d.open = true; });
 }
-const canResult = () => me && (me.role === "admin" || me.role === "results");
+const canResult = () => me && ["admin", "results", "attendant"].includes(me.role);
+
+function maxRounds() {
+  let maxW = 0, maxL = 0;
+  bracket.forEach(r => { const o = roundOf(r.mid); if (o.t === "W") maxW = Math.max(maxW, o.n); else maxL = Math.max(maxL, o.n); });
+  return { maxW, maxL };
+}
+function brBarHtml(name) {
+  let h = `<div class="brbar"><b>対戦表: ${esc(name)}</b><span class="mute">全${bracket.length}試合 / 終了${bracket.filter(r => r.winner).length}</span>`;
+  if (isAdmin() && brList.length) h += `<select id="brSel">${brList.map(b => `<option value="${esc(b.name)}"${b.active ? " selected" : ""}>${esc(b.name)}(${b.matches}試合)</option>`).join("")}</select>`;
+  if (isAdmin()) h += `<button class="mini" id="modeChart">${brMode === "chart" ? "一覧表示にする" : "トーナメント表で見る"}</button>`;
+  return h + `</div>`;
+}
+
+// ---- 管理者用: トーナメント表(Tonamel風) ----
+let curMid = null;
+function openMatch(mid) { curMid = mid; $("#mdlg").showModal(); refreshMatchDialog(); }
+function refreshMatchDialog() {
+  if (!curMid || !$("#mdlg").open) return;
+  const r = bracket.find(x => x.mid === curMid);
+  if (!r) { $("#mdlg").close(); return; }
+  const { maxW, maxL } = maxRounds();
+  $("#mbody").innerHTML = matchHtml(r, maxW, maxL, r.a_name != null && r.b_name != null && !r.winner);
+}
+$("#mdlg").addEventListener("close", () => { curMid = null; });
+
+function renderChart(bar, hit) {
+  const list = $("#list");
+  const { maxW, maxL } = maxRounds();
+  const byId = Object.fromEntries(bracket.map(r => [r.mid, r]));
+  const T = mid => mid[0], N = mid => roundOf(mid).n;
+  // 同じ側の「勝者が進んでくる」試合(グランドファイナル側は含めない)
+  const feeders = r => [r.a_raw, r.b_raw].filter(x => x[0] === "@").map(x => byId[x.slice(1)])
+    .filter(f => f && T(f.mid) === T(r.mid) && (T(r.mid) === "L" || N(r.mid) <= maxW - 2));
+  const ROW = 60, COL = 200, CW = 178, CH = 52, TOP = 30;
+  const Y = {}; let row = 0;
+  const lay = mid => {
+    if (mid in Y) return Y[mid];
+    const f = feeders(byId[mid]);
+    if (!f.length) Y[mid] = row++;
+    else { const ys = f.map(x => lay(x.mid)); Y[mid] = ys.reduce((s, v) => s + v, 0) / ys.length; }
+    return Y[mid];
+  };
+  const wRoot = `W${maxW - 2}-1`, lRoot = `L${maxL}-1`;
+  if (byId[wRoot]) lay(wRoot);
+  bracket.filter(r => T(r.mid) === "W" && N(r.mid) <= maxW - 2 && !(r.mid in Y)).forEach(r => lay(r.mid));
+  const wRows = row; row = wRows + 1;
+  if (byId[lRoot]) lay(lRoot);
+  bracket.filter(r => T(r.mid) === "L" && !(r.mid in Y)).forEach(r => lay(r.mid));
+  const total = row;
+  const P = {};
+  bracket.forEach(r => {
+    const y = (T(r.mid) === "W" && N(r.mid) > maxW - 2) ? (Y[wRoot] ?? 0) : Y[r.mid];
+    P[r.mid] = { x: (N(r.mid) - 1) * COL + 8, y: TOP + y * ROW };
+  });
+  const waitText = raw => { const m = raw.match(/^([@~])(.+)$/); return m ? `${m[2]}${m[1] === "@" ? "勝者" : "敗者"}` : "未定"; };
+  const cell = (name, raw, score, win) => `<div class="cr${win ? " w" : ""}"><span class="cn">${name != null ? esc(name) : `<i>${esc(waitText(raw))}</i>`}</span><span class="cs">${score}</span></div>`;
+  const cards = bracket.map(r => {
+    const g = r.games || "", [sa, sb] = scoreOf(g);
+    const ready = r.a_name != null && r.b_name != null && !r.winner;
+    const cls = `cc${r.winner ? " done" : ready ? (g ? " live" : " ready") : ""}${hit(r) ? "" : " dim"}`;
+    const sc = (n, who) => g ? n : (r.winner ? (r.winner === who ? "○" : "") : "");
+    return `<div class="${cls}" data-open="${r.mid}" style="left:${P[r.mid].x}px;top:${P[r.mid].y}px;width:${CW}px;height:${CH}px">
+      <div class="ch">#${r.mid}${r.first_to === 3 ? " ・3本先取" : ""}</div>${cell(r.a_name, r.a_raw, sc(sa, "a"), r.winner === "a")}${cell(r.b_name, r.b_raw, sc(sb, "b"), r.winner === "b")}</div>`;
+  }).join("");
+  let paths = "";
+  bracket.forEach(r => [r.a_raw, r.b_raw].filter(x => x[0] === "@").forEach(x => {
+    const f = byId[x.slice(1)]; if (!f) return;
+    const x1 = P[f.mid].x + CW, y1 = P[f.mid].y + CH / 2, x2 = P[r.mid].x, y2 = P[r.mid].y + CH / 2, mx = x2 - 14;
+    paths += `<path d="M${x1} ${y1} H${mx} V${y2} H${x2}"/>`;
+  }));
+  const W = Math.max(maxW, maxL) * COL + 20, H = TOP + (total + 1) * ROW;
+  const head = (t, n, top) => `<div class="chd" style="left:${(n - 1) * COL + 8}px;top:${top}px;width:${CW}px">${roundLabel(`${t}${n}-1`, maxW, maxL)}</div>`;
+  let heads = "";
+  for (let n = 1; n <= maxW; n++) heads += head("W", n, 4);
+  for (let n = 1; n <= maxL; n++) heads += head("L", n, TOP + wRows * ROW + 4);
+  const old = list.querySelector(".chart-wrap");
+  const sl = old ? old.scrollLeft : 0, st = old ? old.scrollTop : 0;
+  list.innerHTML = bar + `<div class="chart-wrap"><div class="chart" style="width:${W}px;height:${H}px"><svg width="${W}" height="${H}">${paths}</svg>${heads}${cards}</div></div>`;
+  const nw = list.querySelector(".chart-wrap"); nw.scrollLeft = sl; nw.scrollTop = st;
+  refreshMatchDialog();
+}
 
 function render() {
   if (view === "bracket") return renderBracket();
@@ -323,7 +426,11 @@ $("#list").addEventListener("change", async e => {
   if (e.target.id !== "brSel") return;
   try { await rpc("rpc_bracket_activate", { p_name: e.target.value }); await load(); } catch (_) { $("#stat").textContent = "切り替えに失敗しました"; }
 });
-$("#list").addEventListener("click", async e => {
+const onClick = async e => {
+  const oc = e.target.closest("[data-open]");
+  if (oc) { openMatch(oc.dataset.open); return; }
+  if (e.target.id === "modeChart") { brMode = brMode === "chart" ? "list" : "chart"; render(); return; }
+  if (e.target.id === "mclose") { $("#mdlg").close(); return; }
   const wb = e.target.closest("button[data-act]");
   if (wb) {
     const act = wb.dataset.act, mid = wb.dataset.mid;
@@ -362,7 +469,9 @@ $("#list").addEventListener("click", async e => {
   const p = players.find(x => x.id == id);
   await save(id, { paid: !p.paid });
   render();
-});
+};
+$("#list").addEventListener("click", onClick);
+$("#mdlg").addEventListener("click", onClick);
 
 $("#tabPlayers").onclick = () => setView("players");
 $("#tabBracket").onclick = async () => { setView("bracket"); if (isAdmin()) { try { brList = await rpc("rpc_bracket_list"); render(); } catch (_) {} } };
