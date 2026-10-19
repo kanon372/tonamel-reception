@@ -57,6 +57,10 @@ body.v-bracket .pOnly{display:none!important}
 details.waiting{margin-top:14px}
 details.waiting summary{cursor:pointer;color:var(--mute)}
 .mini{font-size:14px;padding:4px 10px}
+.games{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:15px}
+.games .winline{margin-top:4px;font-weight:700;color:var(--ok)}
+.subbtns{margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+details>summary.mini{cursor:pointer;display:inline-block;color:var(--mute);padding:4px 0}
 .brbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
 .brbar select{width:auto}
 @media (max-width:640px){.sides{grid-template-columns:1fr}.vs{text-align:center}.row{grid-template-columns:1fr 1fr}.row .note{grid-column:1/-1}.form{grid-template-columns:1fr}}
@@ -221,13 +225,33 @@ function sideHtml(name, raw, win) {
   const y = (players.find(p => p.name === name) || {}).yomi;
   return `<div class="side${win ? " win" : ""}"><div class="yomi-big">${esc(y || name)}</div>${y ? `<div class="name-small">${esc(name)}</div>` : ""}</div>`;
 }
+function scoreOf(g) { return [...g].reduce((s, c) => (s[c === "a" ? 0 : 1]++, s), [0, 0]); }
+function gamesHtml(r) {
+  const g = r.games || "";
+  const known = r.a_name != null && r.b_name != null;
+  if (!known) return "";
+  const [sa, sb] = scoreOf(g);
+  const winName = r.winner === "a" ? r.a_name : r.winner === "b" ? r.b_name : null;
+  let h = `<div class="games"><div class="mute">${r.first_to}本先取${g ? `　現在 ${sa} - ${sb}` : ""}</div>`;
+  [...g].forEach((c, i) => { h += `<div>${i + 1}本目　<b>${esc(c === "a" ? r.a_name : r.b_name)}</b></div>`; });
+  if (winName) h += `<div class="winline">${esc(winName)} 選手の勝ち${g ? "" : "(不戦勝・棄権など)"}</div>`;
+  return h + `</div>`;
+}
 function matchHtml(r, maxW, maxL, ready) {
-  const win = r.winner;
-  const btns = canResult() ? (ready
-    ? `<div class="wbtns"><button data-mid="${r.mid}" data-win="a">${esc(r.a_name)} の勝ち</button><button data-mid="${r.mid}" data-win="b">${esc(r.b_name)} の勝ち</button></div>`
-    : win ? `<div style="text-align:right;margin-top:8px"><button class="mini" data-mid="${r.mid}" data-win="">結果を取り消す</button></div>` : "") : "";
+  const win = r.winner, g = r.games || "";
+  let btns = "";
+  if (canResult()) {
+    if (ready) {
+      btns = `<div class="wbtns"><button data-mid="${r.mid}" data-act="game-a">${g.length + 1}本目: ${esc(r.a_name)}</button><button data-mid="${r.mid}" data-act="game-b">${g.length + 1}本目: ${esc(r.b_name)}</button></div>
+        <div class="subbtns">${g ? `<button class="mini" data-mid="${r.mid}" data-act="undo">直前の1本を取り消す</button>` : ""}
+        <details><summary class="mini">不戦勝・棄権で終了</summary>
+        <button class="mini" data-mid="${r.mid}" data-act="wo-a">${esc(r.a_name)} の勝ち</button> <button class="mini" data-mid="${r.mid}" data-act="wo-b">${esc(r.b_name)} の勝ち</button></details></div>`;
+    } else if (win) {
+      btns = `<div style="text-align:right;margin-top:8px"><button class="mini" data-mid="${r.mid}" data-act="${g ? "undo" : "clear"}">${g ? "直前の1本を取り消す" : "結果を取り消す"}</button></div>`;
+    }
+  }
   return `<div class="match${win ? " done" : ""}"><div class="mhead"><b>#${r.mid}</b><span>${roundLabel(r.mid, maxW, maxL)}</span></div>
-    <div class="sides">${sideHtml(r.a_name, r.a_raw, win === "a")}<div class="vs">VS</div>${sideHtml(r.b_name, r.b_raw, win === "b")}</div>${btns}</div>`;
+    <div class="sides">${sideHtml(r.a_name, r.a_raw, win === "a")}<div class="vs">VS</div>${sideHtml(r.b_name, r.b_raw, win === "b")}</div>${gamesHtml(r)}${btns}</div>`;
 }
 function renderBracket() {
   const list = $("#list"); list.className = "";
@@ -300,14 +324,28 @@ $("#list").addEventListener("change", async e => {
   try { await rpc("rpc_bracket_activate", { p_name: e.target.value }); await load(); } catch (_) { $("#stat").textContent = "切り替えに失敗しました"; }
 });
 $("#list").addEventListener("click", async e => {
-  const wb = e.target.closest("button[data-mid]");
+  const wb = e.target.closest("button[data-act]");
   if (wb) {
-    const w = wb.dataset.win || null, mid = wb.dataset.mid;
-    const r = bracket.find(x => x.mid === mid);
-    const msg = w ? `#${mid}: ${w === "a" ? r.a_name : r.b_name} の勝ちで確定しますか？` : `#${mid} の結果を取り消しますか？(この先の試合の結果も取り消されます)`;
-    if (!confirm(msg)) return;
+    const act = wb.dataset.act, mid = wb.dataset.mid;
+    const r = bracket.find(x => x.mid === mid), g = r.games || "";
+    const nm = s => (s === "a" ? r.a_name : r.b_name);
+    let fn = "rpc_set_games", args = {};
+    if (act.startsWith("game-")) {
+      const next = g + act.slice(5), [sa, sb] = scoreOf(next);
+      if ((sa === r.first_to || sb === r.first_to) && !confirm(`#${mid}: ${next.split("").map((c, i) => `${i + 1}本目 ${nm(c)}`).join("、")}\n${nm(sa === r.first_to ? "a" : "b")} 選手の勝ちで確定しますか？`)) return;
+      args = { p_mid: mid, p_games: next };
+    } else if (act === "undo") {
+      if (r.winner && !confirm(`#${mid} の直前の1本を取り消しますか？(この先の試合の結果も取り消されます)`)) return;
+      args = { p_mid: mid, p_games: g.slice(0, -1) };
+    } else if (act === "clear") {
+      if (!confirm(`#${mid} の結果を取り消しますか？(この先の試合の結果も取り消されます)`)) return;
+      fn = "rpc_set_result"; args = { p_mid: mid, p_winner: null };
+    } else if (act.startsWith("wo-")) {
+      if (!confirm(`#${mid}: ${nm(act.slice(3))} 選手の不戦勝・棄権勝ちで確定しますか？(1本ごとの記録は消えます)`)) return;
+      fn = "rpc_set_result"; args = { p_mid: mid, p_winner: act.slice(3) };
+    }
     wb.disabled = true;
-    try { await rpc("rpc_set_result", { p_mid: mid, p_winner: w }); await load(); }
+    try { await rpc(fn, args); await load(); }
     catch (err) { $("#stat").textContent = "結果を保存できませんでした"; wb.disabled = false; }
     return;
   }
