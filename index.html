@@ -21,7 +21,7 @@ button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 .who{color:var(--mute);font-size:14px}
 .stat{color:var(--mute);font-size:14px;margin-left:auto}
 main{padding:12px 16px;max-width:980px;margin:0 auto}
-.row{display:grid;grid-template-columns:minmax(120px,1.2fr) minmax(140px,1.2fr) auto minmax(80px,.8fr) auto;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px}
+.row{display:grid;grid-template-columns:minmax(64px,.5fr) minmax(120px,1.2fr) minmax(140px,1.2fr) auto minmax(80px,.8fr) auto;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px}
 .name{font-weight:600;word-break:break-all}
 .paid{min-width:84px;font-weight:600}
 .paid.y{background:var(--ok);border-color:var(--ok);color:#fff}
@@ -98,7 +98,7 @@ details>summary.mini{cursor:pointer;display:inline-block;color:var(--mute);paddi
   <h1>大会受付</h1>
   <button id="tabPlayers" class="on">参加者</button>
   <button id="tabBracket">対戦表</button>
-  <input id="search" type="text" placeholder="名前・読みで検索">
+  <input id="search" type="text" placeholder="名前・読み・登録番号で検索">
   <span data-need="edit" class="pOnly">
     <button data-f="all" class="on">全員</button>
     <button data-f="unpaid">未払い</button>
@@ -160,7 +160,7 @@ const SB_URL = "https://pnosjjeghcfsxxprcdfr.supabase.co";
 const SB_KEY = "sb_publishable_dDd-zIg5OFIbj3MKImMWHw_QVupH0Hc";
 const $ = s => document.querySelector(s);
 const ROLE_LABEL = { admin: "運営", reception: "受付", attendant: "アテンド", results: "結果入力係" };
-let token = "", me = null, players = [], bracket = [], brList = [], view = "players", filter = "all", callMode = false, brMode = "chart";
+let token = "", me = null, players = [], bracket = [], brList = [], view = "players", filter = "all", callMode = false, brMode = "chart", brTab = "todo";
 
 try { token = localStorage.getItem("reception_token") || ""; } catch (e) {}
 
@@ -244,8 +244,9 @@ function sideHtml(name, raw, win) {
     const m = raw.match(/^([@~])(.+)$/);
     return `<div class="side mute">${m ? `${esc(m[2])}の${m[1] === "@" ? "勝者" : "敗者"}待ち` : "未定"}</div>`;
   }
-  const y = (players.find(p => p.name === name) || {}).yomi;
-  return `<div class="side${win ? " win" : ""}"><div class="yomi-big">${esc(y || name)}</div>${y ? `<div class="name-small">${esc(name)}</div>` : ""}</div>`;
+  const pl = players.find(p => p.name === name) || {}, y = pl.yomi, no = pl.reg_no ? `登録番号 ${pl.reg_no}` : "";
+  const sub = [y ? name : "", no].filter(Boolean).join(" / ");
+  return `<div class="side${win ? " win" : ""}"><div class="yomi-big">${esc(y || name)}</div>${sub ? `<div class="name-small">${esc(sub)}</div>` : ""}</div>`;
 }
 function scoreOf(g) { return [...g].reduce((s, c) => (s[c === "a" ? 0 : 1]++, s), [0, 0]); }
 function gamesHtml(r) {
@@ -282,7 +283,7 @@ function renderBracket() {
   let maxW = 0, maxL = 0;
   bracket.forEach(r => { const o = roundOf(r.mid); if (o.t === "W") maxW = Math.max(maxW, o.n); else maxL = Math.max(maxL, o.n); });
   const q = $("#search").value.trim().toLowerCase();
-  const hit = r => !q || [r.mid, r.a_name, r.b_name, ...[r.a_name, r.b_name].map(n => (players.find(p => p.name === n) || {}).yomi)]
+  const hit = r => !q || [r.mid, r.a_name, r.b_name, ...[r.a_name, r.b_name].map(n => (players.find(p => p.name === n) || {}).yomi), ...[r.a_name, r.b_name].map(n => (players.find(p => p.name === n) || {}).reg_no)]
     .some(s => s && String(s).toLowerCase().includes(q));
   const key = r => { const o = roundOf(r.mid); return o.n * 1000 + (o.t === "L" ? 500 : 0) + o.i; };
   const ready = bracket.filter(r => r.a_name != null && r.b_name != null && !r.winner && hit(r)).sort((a, b) => key(a) - key(b));
@@ -291,10 +292,14 @@ function renderBracket() {
   const name = bracket[0].bracket;
   const bar = brBarHtml(name);
   if (isAdmin() && brMode === "chart") return renderChart(bar, hit);
-  let html = bar + `<div class="sec">次に行う試合 (${ready.length})</div>`;
-  html += ready.length ? ready.map(r => matchHtml(r, maxW, maxL, true)).join("") : `<div class="empty">今すぐ行える試合はありません</div>`;
-  if (done.length) html += `<details class="waiting"><summary>終了した試合 (${done.length})</summary>${done.map(r => matchHtml(r, maxW, maxL, false)).join("")}</details>`;
-  if (waiting.length) html += `<details class="waiting"><summary>対戦相手が決まっていない試合 (${waiting.length})</summary>${waiting.map(r => matchHtml(r, maxW, maxL, false)).join("")}</details>`;
+  let html = bar + `<div class="brbar"><button data-brtab="todo" class="${brTab === "todo" ? "on" : ""}">未登録 (${ready.length + waiting.length})</button><button data-brtab="done" class="${brTab === "done" ? "on" : ""}">登録済み (${done.length})</button></div>`;
+  if (brTab === "done") {
+    html += done.length ? done.map(r => matchHtml(r, maxW, maxL, false)).join("") : `<div class="empty">登録済みの試合はまだありません</div>`;
+  } else {
+    html += `<div class="sec">次に行う試合 (${ready.length})</div>`;
+    html += ready.length ? ready.map(r => matchHtml(r, maxW, maxL, true)).join("") : `<div class="empty">今すぐ行える試合はありません</div>`;
+    if (waiting.length) html += `<details class="waiting"><summary>対戦相手が決まっていない試合 (${waiting.length})</summary>${waiting.map(r => matchHtml(r, maxW, maxL, false)).join("")}</details>`;
+  }
   const open = [...list.querySelectorAll("details")].map(d => d.open);
   list.innerHTML = html;
   list.querySelectorAll("details").forEach((d, i) => { if (open[i]) d.open = true; });
@@ -388,7 +393,7 @@ function render() {
   const rows = players.filter(p => {
     if (filter === "unpaid" && p.paid) return false;
     if (filter === "noyomi" && p.yomi) return false;
-    return !q || p.name.toLowerCase().includes(q) || p.yomi.toLowerCase().includes(q);
+    return !q || p.name.toLowerCase().includes(q) || p.yomi.toLowerCase().includes(q) || (p.reg_no || "").toLowerCase().includes(q);
   });
   const hasPaid = canEdit();
   $("#stat").textContent = `${players.length}人` + (hasPaid ? `　支払い ${players.filter(p => p.paid).length}/${players.length}　読み ${players.filter(p => p.yomi).length}/${players.length}` : "");
@@ -397,10 +402,11 @@ function render() {
   if (!rows.length) { list.innerHTML = `<div class="empty">該当する選手がいません</div>`; return; }
   list.innerHTML = rows.map(p => callMode ? `
     <div class="row">
-      <div><div class="yomi-big">${esc(p.yomi) || '<span style="color:var(--mute)">(読み未入力)</span>'}</div><div class="name-small">${esc(p.name)}</div></div>
+      <div><div class="yomi-big">${esc(p.yomi) || '<span style="color:var(--mute)">(読み未入力)</span>'}</div><div class="name-small">${esc(p.name)}${p.reg_no ? ` / 登録番号 ${esc(p.reg_no)}` : ""}</div></div>
       ${hasPaid ? `<div class="badge ${p.paid ? "y" : "n"}">${p.paid ? "支払済" : "未払い"}</div>` : ""}
     </div>` : `
     <div class="row" data-id="${p.id}">
+      <input type="text" class="regno" value="${esc(p.reg_no)}" placeholder="登録番号">
       <div class="name">${esc(p.name)}</div>
       <input type="text" class="yomi" value="${esc(p.yomi)}" placeholder="読み(ふりがな)">
       <button class="paid ${p.paid ? "y" : "n"}">${p.paid ? "支払済" : "未払い"}</button>
@@ -412,7 +418,7 @@ function render() {
 async function save(id, patch) {
   const p = players.find(x => x.id == id);
   Object.assign(p, patch);
-  try { await rpc("rpc_update", { p_id: id, p_yomi: p.yomi, p_paid: p.paid, p_note: p.note }); }
+  try { await rpc("rpc_update", { p_id: id, p_yomi: p.yomi, p_paid: p.paid, p_note: p.note, p_reg_no: p.reg_no }); }
   catch (e) { $("#stat").textContent = e.kind === "forbidden" ? "この操作の権限がありません" : "保存に失敗しました。再度操作してください"; }
 }
 
@@ -421,6 +427,7 @@ $("#list").addEventListener("change", e => {
   const id = row.dataset.id;
   if (e.target.classList.contains("yomi")) save(id, { yomi: e.target.value.trim() });
   if (e.target.classList.contains("note")) save(id, { note: e.target.value.trim() });
+  if (e.target.classList.contains("regno")) save(id, { reg_no: e.target.value.trim() });
 });
 $("#list").addEventListener("change", async e => {
   if (e.target.id !== "brSel") return;
@@ -429,6 +436,8 @@ $("#list").addEventListener("change", async e => {
 const onClick = async e => {
   const oc = e.target.closest("[data-open]");
   if (oc) { openMatch(oc.dataset.open); return; }
+  const bt = e.target.closest("button[data-brtab]");
+  if (bt) { brTab = bt.dataset.brtab; render(); return; }
   if (e.target.id === "modeChart") { brMode = brMode === "chart" ? "list" : "chart"; render(); return; }
   if (e.target.id === "mclose") { $("#mdlg").close(); return; }
   if (e.target.id === "resetAll") {
