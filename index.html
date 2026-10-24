@@ -78,6 +78,9 @@ details.waiting summary{cursor:pointer;color:var(--mute)}
 .mini{font-size:14px;padding:4px 10px}
 .games{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:15px}
 .games .winline{margin-top:4px;font-weight:700;color:var(--ok)}
+.regby{margin-top:2px;font-size:13px}
+.mlog{margin-top:12px;padding-top:8px;border-top:1px dashed var(--line);font-size:14px;max-height:180px;overflow:auto}
+.logrow{padding:2px 0}
 .subbtns{margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
 details>summary.mini{cursor:pointer;display:inline-block;color:var(--mute);padding:4px 0}
 .brbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
@@ -265,6 +268,7 @@ function gamesHtml(r) {
   let h = `<div class="games"><div class="mute">${r.first_to}本先取${g ? `　現在 ${sa} - ${sb}` : ""}</div>`;
   [...g].forEach((c, i) => { h += `<div>${i + 1}本目　<b>${esc(c === "a" ? r.a_name : r.b_name)}</b></div>`; });
   if (winName) h += `<div class="winline">${esc(winName)} 選手の勝ち${g ? "" : "(不戦勝・棄権など)"}</div>`;
+  if (r.last_by && (g || r.winner)) h += `<div class="mute regby">登録: ${esc(r.last_by)}　${fmtAt(r.last_at)}</div>`;
   return h + `</div>`;
 }
 function matchHtml(r, maxW, maxL, ready) {
@@ -328,12 +332,38 @@ function brBarHtml(name) {
 // ---- 管理者用: トーナメント表(Tonamel風) ----
 let curMid = null;
 function openMatch(mid) { curMid = mid; $("#mdlg").showModal(); refreshMatchDialog(); }
+// ---- 登録の履歴(誰がいつ登録したか) ----
+const logCache = {};
+const fmtAt = at => { try { return new Date(at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (_) { return ""; } };
+function logLine(l, r) {
+  const nm = s => (s === "a" ? r.a_name : s === "b" ? r.b_name : "");
+  let t;
+  if (l.action === "add") { const c = l.games.slice(-1); t = `${l.games.length}本目 ${nm(c)}` + (l.winner ? `　→ ${nm(l.winner)} の勝ちで確定` : ""); }
+  else if (l.action === "undo") t = "直前の1本を取り消し";
+  else if (l.action === "reset") t = "この試合の記録をすべて消去";
+  else if (l.action === "clear") t = "結果を取り消し";
+  else if (l.action === "walkover") t = `${nm(l.winner)} の不戦勝・棄権で終了`;
+  else if (l.action === "cascade") t = "前の試合の結果が変わったため取り消し";
+  else if (l.action === "reset-all") t = "全試合の結果をリセット";
+  else t = l.action;
+  return `<div class="logrow"><span class="mute">${esc(fmtAt(l.at))}</span> <b>${esc(l.staff)}</b> ${esc(t)}</div>`;
+}
+async function loadMatchLog(mid) {
+  try {
+    const rows = await rpc("rpc_match_log", { p_mid: mid });
+    const r = bracket.find(x => x.mid === mid); if (!r) return;
+    logCache[mid] = rows.length ? rows.map(l => logLine(l, r)).join("") : '<div class="mute">まだ登録はありません</div>';
+    if (curMid === mid && $("#mlog")) $("#mlog").innerHTML = `<div class="mute">登録の履歴</div>${logCache[mid]}`;
+  } catch (_) {}
+}
 function refreshMatchDialog() {
   if (!curMid || !$("#mdlg").open) return;
   const r = bracket.find(x => x.mid === curMid);
   if (!r) { $("#mdlg").close(); return; }
   const { maxW, maxL } = maxRounds();
-  $("#mbody").innerHTML = matchHtml(r, maxW, maxL, r.a_name != null && r.b_name != null && !r.winner);
+  $("#mbody").innerHTML = matchHtml(r, maxW, maxL, r.a_name != null && r.b_name != null && !r.winner)
+    + `<div class="mlog" id="mlog"><div class="mute">登録の履歴</div>${logCache[curMid] || '<div class="mute">読み込み中…</div>'}</div>`;
+  loadMatchLog(curMid);
 }
 $("#mdlg").addEventListener("close", () => { curMid = null; });
 
