@@ -80,6 +80,13 @@ details.waiting summary{cursor:pointer;color:var(--mute)}
 .games{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:15px}
 .games .winline{margin-top:4px;font-weight:700;color:var(--ok)}
 .regby{margin-top:2px;font-size:13px}
+.qbox{margin-top:10px}
+.qbox .wbtns{margin-top:6px}
+.wbtns button.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.qtext{margin:10px 0 8px;font-size:17px}
+.qscores{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:8px}
+.qscores button{padding:14px 6px;font-size:20px;font-weight:700}
+details>.wbtns{margin-top:8px}
 .pbadge{display:inline-block;font-size:11px;font-weight:700;line-height:1.5;padding:0 6px;border-radius:4px;margin-right:6px;vertical-align:middle;color:#fff;background:var(--acc)}
 .pbadge.p2{background:#d98a00}
 .yomi-big .pbadge{font-size:13px;vertical-align:middle}
@@ -272,12 +279,13 @@ function gamesHtml(r) {
   if (!known) return "";
   const [sa, sb] = scoreOf(g), [s1, s2] = r.swap ? [sb, sa] : [sa, sb];
   const winName = r.winner === "a" ? r.a_name : r.winner === "b" ? r.b_name : null;
-  let h = `<div class="games"><div class="mute">${r.first_to}本先取${g ? `　現在 1P ${s1} - ${s2} 2P` : ""}</div>`;
-  [...g].forEach((c, i) => { h += `<div>${i + 1}本目　<b>${esc(c === "a" ? r.a_name : r.b_name)}</b></div>`; });
+  let h = `<div class="games"><div class="mute">${r.first_to}本先取${g ? `　${r.quick ? "スコア" : "現在"} 1P ${s1} - ${s2} 2P${r.quick ? "(本数ごとの内訳なし)" : ""}` : ""}</div>`;
+  if (!r.quick) [...g].forEach((c, i) => { h += `<div>${i + 1}本目　<b>${esc(c === "a" ? r.a_name : r.b_name)}</b></div>`; });
   if (winName) h += `<div class="winline">${esc(winName)} 選手の勝ち${g ? "" : "(不戦勝・棄権など)"}</div>`;
   if (r.last_by && (g || r.winner)) h += `<div class="mute regby">登録: ${esc(r.last_by)}　${fmtAt(r.last_at)}</div>`;
   return h + `</div>`;
 }
+const picks = {};   // 勝った人の選択(まだ保存していない): { 試合番号: "a" | "b" }
 function matchHtml(r, maxW, maxL, ready) {
   const win = r.winner, g = r.games || "";
   const known = r.a_name != null && r.b_name != null;
@@ -287,12 +295,20 @@ function matchHtml(r, maxW, maxL, ready) {
   let btns = "";
   if (canResult()) {
     if (ready) {
-      btns = `<div class="wbtns">${order.map(s => `<button data-mid="${r.mid}" data-act="game-${s}">${g.length + 1}本目: ${esc(nm(s))}</button>`).join("")}</div>
+      // いちばん上: 勝った人を押す → 勝敗が文字で出る → スコア(2-0 / 2-1 など)を押して確定
+      const pick = picks[r.mid], lose = pick === "a" ? "b" : "a";
+      const quick = `<div class="qbox"><div class="mute">勝った人の名前を押してください</div>
+        <div class="wbtns">${order.map((s, i) => `<button class="${pick === s ? "on" : ""}" data-mid="${r.mid}" data-act="pick-${s}">${i === 0 ? "1P" : "2P"} ${esc(nm(s))}</button>`).join("")}</div>
+        ${pick ? `<div class="qtext"><b>${esc(nm(pick))}</b> 勝ち　/　${esc(nm(lose))} 負け</div>
+          <div class="qscores">${Array.from({ length: r.first_to }, (_, k) => `<button data-mid="${r.mid}" data-act="score-${k}">${r.first_to}-${k}</button>`).join("")}</div>` : ""}</div>`;
+      const perGame = `<details${g ? " open" : ""}><summary class="mini">1本ずつ入力する</summary>
+        <div class="wbtns">${order.map(s => `<button data-mid="${r.mid}" data-act="game-${s}">${g.length + 1}本目: ${esc(nm(s))}</button>`).join("")}</div></details>`;
+      btns = `${quick}${perGame}
         <div class="subbtns">${swapBtn}${g ? `<button class="mini" data-mid="${r.mid}" data-act="undo">直前の1本を取り消す</button><button class="mini" data-mid="${r.mid}" data-act="reset">この試合の記録をすべて消す</button>` : ""}
         <details><summary class="mini">不戦勝・棄権で終了</summary>
         ${order.map(s => `<button class="mini" data-mid="${r.mid}" data-act="wo-${s}">${esc(nm(s))} の勝ち</button>`).join(" ")}</details></div>`;
     } else if (win) {
-      btns = `<div class="subbtns" style="justify-content:flex-end">${swapBtn}${g ? `<button class="mini" data-mid="${r.mid}" data-act="undo">直前の1本を取り消す</button>` : ""}<button class="mini" data-mid="${r.mid}" data-act="reset">この試合の結果をすべて消す</button></div>`;
+      btns = `<div class="subbtns" style="justify-content:flex-end">${swapBtn}${g && !r.quick ? `<button class="mini" data-mid="${r.mid}" data-act="undo">直前の1本を取り消す</button>` : ""}<button class="mini" data-mid="${r.mid}" data-act="reset">この試合の結果をすべて消す</button></div>`;
     }
   }
   const sideOf = (s, label) => sideHtml(nm(s), s === "a" ? r.a_raw : r.b_raw, win === s, label);
@@ -357,6 +373,7 @@ function logLine(l, r) {
   const nm = s => (s === "a" ? r.a_name : s === "b" ? r.b_name : "");
   let t;
   if (l.action === "add") { const c = l.games.slice(-1); t = `${l.games.length}本目 ${nm(c)}` + (l.winner ? `　→ ${nm(l.winner)} の勝ちで確定` : ""); }
+  else if (l.action === "score") { const wn = [...l.games].filter(c => c === l.winner).length; t = `${nm(l.winner)} ${wn}-${l.games.length - wn} で勝ち(スコア入力)`; }
   else if (l.action === "undo") t = "直前の1本を取り消し";
   else if (l.action === "reset") t = "この試合の記録をすべて消去";
   else if (l.action === "clear") t = "結果を取り消し";
@@ -522,7 +539,16 @@ const onClick = async e => {
     const r = bracket.find(x => x.mid === mid), g = r.games || "";
     const nm = s => (s === "a" ? r.a_name : r.b_name);
     let fn = "rpc_set_games", args = {};
-    if (act.startsWith("game-")) {
+    if (act.startsWith("pick-")) {
+      const s = act.slice(5); picks[mid] = picks[mid] === s ? null : s;
+      render(); refreshMatchDialog(); return;
+    } else if (act.startsWith("score-")) {
+      const w = picks[mid]; if (!w) return;
+      const k = Number(act.slice(6)), l = w === "a" ? "b" : "a";
+      if (!confirm(`#${mid}: ${nm(w)} ${r.first_to}-${k} ${nm(l)}\n${nm(w)} 選手の勝ちで確定しますか？${g ? "\n(これまでの1本ごとの記録は、スコアに置き換わります)" : ""}`)) return;
+      fn = "rpc_set_score"; args = { p_mid: mid, p_winner: w, p_loser_wins: k };
+      delete picks[mid];
+    } else if (act.startsWith("game-")) {
       const next = g + act.slice(5), [sa, sb] = scoreOf(next);
       if ((sa === r.first_to || sb === r.first_to) && !confirm(`#${mid}: ${next.split("").map((c, i) => `${i + 1}本目 ${nm(c)}`).join("、")}\n${nm(sa === r.first_to ? "a" : "b")} 選手の勝ちで確定しますか？`)) return;
       args = { p_mid: mid, p_games: next };
