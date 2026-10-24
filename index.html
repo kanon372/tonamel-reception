@@ -154,6 +154,7 @@ details>summary.mini{cursor:pointer;display:inline-block;color:var(--mute);paddi
       <select id="sRole">
         <option value="reception">受付</option>
         <option value="attendant">アテンド</option>
+        <option value="desk">受付・アテンド</option>
         <option value="results">結果入力係</option>
         <option value="admin">運営</option>
       </select>
@@ -169,7 +170,7 @@ details>summary.mini{cursor:pointer;display:inline-block;color:var(--mute);paddi
 const SB_URL = "https://pnosjjeghcfsxxprcdfr.supabase.co";
 const SB_KEY = "sb_publishable_dDd-zIg5OFIbj3MKImMWHw_QVupH0Hc";
 const $ = s => document.querySelector(s);
-const ROLE_LABEL = { admin: "運営", reception: "受付", attendant: "アテンド", results: "結果入力係" };
+const ROLE_LABEL = { admin: "運営", reception: "受付", attendant: "アテンド", results: "結果入力係", desk: "受付・アテンド" };
 let token = "", me = null, players = [], bracket = [], brList = [], view = "players", filter = "all", callMode = false, brMode = "chart", brTab = "todo", sortMode = "no";
 
 try { token = localStorage.getItem("reception_token") || ""; } catch (e) {}
@@ -192,7 +193,7 @@ async function call(fn, args) {
 const rpc = (fn, args = {}) => call(fn, { p_token: token, ...args });
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
-const canEdit = () => me && (me.role === "admin" || me.role === "reception");
+const canEdit = () => me && ["admin", "reception", "desk"].includes(me.role);
 const isAdmin = () => me && me.role === "admin";
 
 function showGate(msg) {
@@ -315,7 +316,7 @@ function renderBracket() {
   list.innerHTML = html;
   list.querySelectorAll("details").forEach((d, i) => { if (open[i]) d.open = true; });
 }
-const canResult = () => me && ["admin", "results", "attendant"].includes(me.role);
+const canResult = () => me && ["admin", "results", "attendant", "desk"].includes(me.role);
 
 function maxRounds() {
   let maxW = 0, maxL = 0;
