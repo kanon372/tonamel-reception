@@ -315,9 +315,15 @@ function renderBracket() {
   const name = bracket[0].bracket;
   const bar = brBarHtml(name);
   if (isAdmin() && brMode === "chart") return renderChart(bar, hit);
-  let html = bar + `<div class="brbar brtabs"><button data-brtab="todo" class="${brTab === "todo" ? "on" : ""}">未登録 (${ready.length + waiting.length})</button><button data-brtab="done" class="${brTab === "done" ? "on" : ""}">登録済み (${done.length})</button></div>`;
+  // 登録済み(個人): ログイン中のアカウントが登録した試合(新しい登録順)
+  const mine = bracket.filter(r => r.mine && hit(r)).sort((a, b) => new Date(b.last_at || 0) - new Date(a.last_at || 0));
+  const tab = (id, label, n) => `<button data-brtab="${id}" class="${brTab === id ? "on" : ""}">${label} (${n})</button>`;
+  let html = bar + `<div class="brbar brtabs">${tab("todo", "未登録", ready.length + waiting.length)}${tab("done", "登録済み", done.length)}${tab("mine", "登録済み(個人)", mine.length)}</div>`;
   if (brTab === "done") {
     html += done.length ? done.map(r => matchHtml(r, maxW, maxL, false)).join("") : `<div class="empty">登録済みの試合はまだありません</div>`;
+  } else if (brTab === "mine") {
+    html += `<div class="sec">${esc(me.name)} が登録した試合 (${mine.length})</div>`;
+    html += mine.length ? mine.map(r => matchHtml(r, maxW, maxL, r.a_name != null && r.b_name != null && !r.winner)).join("") : `<div class="empty">あなたが登録した試合はまだありません</div>`;
   } else {
     html += `<div class="sec">次に行う試合 (${ready.length})</div>`;
     html += ready.length ? ready.map(r => matchHtml(r, maxW, maxL, true)).join("") : `<div class="empty">今すぐ行える試合はありません</div>`;
