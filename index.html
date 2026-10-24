@@ -574,12 +574,13 @@ $("#logout").onclick = async () => { try { await rpc("rpc_logout"); } catch (_) 
 // ---- 取り込み ----
 function parsePaste(text) {
   const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const isStatus = l => l.includes("エントリー済み");
-  if (!lines.some(isStatus)) return { names: lines, raw: false };
+  // ステータス行: 以前は「エントリー済み」、確定後は「出場」(直後が番号の行。見出しの「出場」は除く)
+  const isStatusAt = i => lines[i].includes("エントリー済み") || (lines[i] === "出場" && /^\d{1,4}$/.test(lines[i + 1] || ""));
+  if (!lines.some((_, i) => isStatusAt(i))) return { names: lines, raw: false };
   const isDate = l => /^\d{4}\/\d{1,2}\/\d{1,2}/.test(l);
   const names = [], nos = [];
   lines.forEach((l, i) => {
-    if (!isStatus(l)) return;
+    if (!isStatusAt(i)) return;
     const cand = [];
     for (let j = i - 1; j >= 0 && !isDate(lines[j]) && cand.length < 2; j--) {
       if (lines[j] !== "-") cand.unshift(lines[j]);
