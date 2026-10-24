@@ -10,6 +10,7 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,"Hiragino Sans","Yu Gothic UI",sans-serif}
+.brtabs{position:sticky;top:var(--hh,56px);z-index:4;background:var(--bg);padding:8px 0;margin:0 0 4px;border-bottom:1px solid var(--line)}
 header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 header h1{font-size:18px;margin:0 8px 0 0}
 input,button,select{font:inherit;color:inherit}
@@ -304,7 +305,7 @@ function renderBracket() {
   const name = bracket[0].bracket;
   const bar = brBarHtml(name);
   if (isAdmin() && brMode === "chart") return renderChart(bar, hit);
-  let html = bar + `<div class="brbar"><button data-brtab="todo" class="${brTab === "todo" ? "on" : ""}">未登録 (${ready.length + waiting.length})</button><button data-brtab="done" class="${brTab === "done" ? "on" : ""}">登録済み (${done.length})</button></div>`;
+  let html = bar + `<div class="brbar brtabs"><button data-brtab="todo" class="${brTab === "todo" ? "on" : ""}">未登録 (${ready.length + waiting.length})</button><button data-brtab="done" class="${brTab === "done" ? "on" : ""}">登録済み (${done.length})</button></div>`;
   if (brTab === "done") {
     html += done.length ? done.map(r => matchHtml(r, maxW, maxL, false)).join("") : `<div class="empty">登録済みの試合はまだありません</div>`;
   } else {
@@ -640,6 +641,10 @@ $("#sSave").onclick = async () => {
   } catch (e) { msg.style.color = "var(--ng)"; msg.textContent = "名前とパスワードを入力してください"; }
 };
 
+// 固定バー(未登録/登録済み)を、上のヘッダーの真下に付ける
+const setHH = () => document.documentElement.style.setProperty("--hh", ($("header").offsetHeight - 1) + "px");
+try { new ResizeObserver(setHH).observe($("header")); } catch (_) { window.addEventListener("resize", setHH); }
+setHH();
 load();
 setInterval(() => { if (!document.hidden && token && !$("#dlg").open && !$("#sdlg").open) load(); }, 5000);
 </script>
