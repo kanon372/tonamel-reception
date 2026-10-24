@@ -441,7 +441,7 @@ function renderChart(bar, hit) {
     const cls = `cc${r.winner ? " done" : ready ? (g ? " live" : " ready") : ""}${hit(r) ? "" : " dim"}`;
     const sc = (n, who) => g ? n : (r.winner ? (r.winner === who ? "○" : "") : "");
     return `<div class="${cls}" data-open="${r.mid}" style="left:${P[r.mid].x}px;top:${P[r.mid].y}px;width:${CW}px;height:${CH}px">
-      <div class="ch">#${r.mid}${r.first_to === 3 ? " ・3本先取" : ""}</div>${(r.swap ? ["b", "a"] : ["a", "b"]).map((s, i) => cell(s === "a" ? r.a_name : r.b_name, s === "a" ? r.a_raw : r.b_raw, sc(s === "a" ? sa : sb, s), r.winner === s, i === 0 ? "1P" : "2P")).join("")}</div>`;
+      <div class="ch">#${r.mid}${r.first_to === 3 ? " ・3本先取" : ""}</div>${["a", "b"].map(s => cell(s === "a" ? r.a_name : r.b_name, s === "a" ? r.a_raw : r.b_raw, sc(s === "a" ? sa : sb, s), r.winner === s, (s === "a") === !r.swap ? "1P" : "2P")).join("")}</div>`;  // 並びはTonamelと同じ(上=a、下=b)。1P/2Pは印だけ
   }).join("");
   let paths = "";
   bracket.forEach(r => [r.a_raw, r.b_raw].filter(x => x[0] === "@").forEach(x => {
