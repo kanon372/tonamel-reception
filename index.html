@@ -60,7 +60,9 @@ details.waiting summary{cursor:pointer;color:var(--mute)}
 .chart{position:relative}
 .chart svg{position:absolute;left:0;top:0;pointer-events:none}
 .chart svg path{fill:none;stroke:var(--mute);stroke-width:1;opacity:.45}
-.chd{position:absolute;font-size:12px;font-weight:700;color:var(--mute);text-align:center;background:var(--bg);border-radius:6px;padding:2px 0}
+.chbar{position:sticky;top:0;z-index:3;height:30px;background:var(--card);border-bottom:1px solid var(--line)}
+.chd{position:absolute;top:3px;font-size:12px;font-weight:700;color:var(--fg);text-align:center;background:color-mix(in srgb,var(--acc) 16%,var(--card));border-radius:6px;padding:2px 0}
+.chbar.l .chd{background:color-mix(in srgb,#d98a00 22%,var(--card))}
 .cc{position:absolute;box-sizing:border-box;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer;font-size:12px;line-height:1.35;overflow:hidden}
 .cc:hover{border-color:var(--acc)}
 .cc .ch{font-size:10px;color:var(--mute);padding:0 6px;background:var(--card);border-bottom:1px solid var(--line)}
@@ -338,7 +340,7 @@ function renderChart(bar, hit) {
   // 同じ側の「勝者が進んでくる」試合(グランドファイナル側は含めない)
   const feeders = r => [r.a_raw, r.b_raw].filter(x => x[0] === "@").map(x => byId[x.slice(1)])
     .filter(f => f && T(f.mid) === T(r.mid) && (T(r.mid) === "L" || N(r.mid) <= maxW - 2));
-  const ROW = 60, COL = 200, CW = 178, CH = 52, TOP = 30;
+  const ROW = 60, COL = 200, CW = 178, CH = 52, TOP = 8;
   const Y = {}; let row = 0;
   const lay = mid => {
     if (mid in Y) return Y[mid];
@@ -376,14 +378,20 @@ function renderChart(bar, hit) {
     paths += `<path d="M${x1} ${y1} H${mx} V${y2} H${x2}"/>`;
   }));
   const W = Math.max(maxW, maxL) * COL + 20, H = TOP + (total + 1) * ROW;
-  const head = (t, n, top) => `<div class="chd" style="left:${(n - 1) * COL + 8}px;top:${top}px;width:${CW}px">${roundLabel(`${t}${n}-1`, maxW, maxL)}</div>`;
-  let heads = "";
-  for (let n = 1; n <= maxW; n++) heads += head("W", n, 4);
-  for (let n = 1; n <= maxL; n++) heads += head("L", n, TOP + wRows * ROW + 4);
+  // 見出し(1回戦など)は上に固定し、敗者側までスクロールしたら敗者の見出しに切り替える
+  const labels = side => { let h = ""; for (let n = 1; n <= (side === "W" ? maxW : maxL); n++) h += `<div class="chd" style="left:${(n - 1) * COL + 8}px;width:${CW}px">${roundLabel(`${side}${n}-1`, maxW, maxL)}</div>`; return h; };
+  const lSwitch = TOP + wRows * ROW - 40;
   const old = list.querySelector(".chart-wrap");
   const sl = old ? old.scrollLeft : 0, st = old ? old.scrollTop : 0;
-  list.innerHTML = bar + `<div class="chart-wrap"><div class="chart" style="width:${W}px;height:${H}px"><svg width="${W}" height="${H}">${paths}</svg>${heads}${cards}</div></div>`;
-  const nw = list.querySelector(".chart-wrap"); nw.scrollLeft = sl; nw.scrollTop = st;
+  list.innerHTML = bar + `<div class="chart-wrap"><div class="chbar" style="width:${W}px">${labels("W")}</div><div class="chart" style="width:${W}px;height:${H}px"><svg width="${W}" height="${H}">${paths}</svg>${cards}</div></div>`;
+  const nw = list.querySelector(".chart-wrap"), cb = nw.querySelector(".chbar");
+  let side = "W";
+  const upd = () => {
+    const s = nw.scrollTop >= lSwitch ? "L" : "W";
+    if (s !== side) { side = s; cb.innerHTML = labels(s); cb.classList.toggle("l", s === "L"); }
+  };
+  nw.addEventListener("scroll", upd);
+  nw.scrollLeft = sl; nw.scrollTop = st; upd();
   refreshMatchDialog();
 }
 
