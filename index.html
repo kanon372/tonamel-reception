@@ -106,6 +106,11 @@ details>summary.mini{cursor:pointer;display:inline-block;color:var(--mute);paddi
     <button data-f="unpaid">未払い</button>
     <button data-f="noyomi">読み未入力</button>
   </span>
+  <select id="sortSel" class="pOnly" title="並び順" style="width:auto">
+    <option value="no">番号順</option>
+    <option value="yomi">読み順</option>
+    <option value="id">取り込み順</option>
+  </select>
   <button id="modeBtn" data-need="edit" class="pOnly">呼び出し表示</button>
   <button id="importBtn" data-need="admin" class="pOnly">名前を取り込む</button>
   <button id="staffBtn" data-need="admin">アカウント</button>
@@ -162,7 +167,7 @@ const SB_URL = "https://pnosjjeghcfsxxprcdfr.supabase.co";
 const SB_KEY = "sb_publishable_dDd-zIg5OFIbj3MKImMWHw_QVupH0Hc";
 const $ = s => document.querySelector(s);
 const ROLE_LABEL = { admin: "運営", reception: "受付", attendant: "アテンド", results: "結果入力係" };
-let token = "", me = null, players = [], bracket = [], brList = [], view = "players", filter = "all", callMode = false, brMode = "chart", brTab = "todo";
+let token = "", me = null, players = [], bracket = [], brList = [], view = "players", filter = "all", callMode = false, brMode = "chart", brTab = "todo", sortMode = "no";
 
 try { token = localStorage.getItem("reception_token") || ""; } catch (e) {}
 
@@ -403,6 +408,10 @@ function render() {
     if (filter === "noyomi" && p.yomi) return false;
     return !q || p.name.toLowerCase().includes(q) || p.yomi.toLowerCase().includes(q) || (p.reg_no || "").toLowerCase().includes(q);
   });
+  // 並び順: 番号順(番号なしは最後) / 読み順(読みなしは最後) / 取り込み順
+  const numOf = p => (/^\d+$/.test(p.reg_no || "") ? Number(p.reg_no) : Infinity);
+  if (sortMode === "no") rows.sort((a, b) => (numOf(a) - numOf(b)) || (a.id - b.id));
+  else if (sortMode === "yomi") rows.sort((a, b) => (!a.yomi - !b.yomi) || a.yomi.localeCompare(b.yomi, "ja") || (a.id - b.id));
   const hasPaid = canEdit();
   $("#stat").textContent = `${players.length}人` + (hasPaid ? `　支払い ${players.filter(p => p.paid).length}/${players.length}　読み ${players.filter(p => p.yomi).length}/${players.length}` : "");
   const list = $("#list");
@@ -505,6 +514,7 @@ $("#mdlg").addEventListener("click", onClick);
 $("#tabPlayers").onclick = () => setView("players");
 $("#tabBracket").onclick = async () => { setView("bracket"); if (isAdmin()) { try { brList = await rpc("rpc_bracket_list"); render(); } catch (_) {} } };
 $("#search").addEventListener("input", render);
+$("#sortSel").addEventListener("change", e => { sortMode = e.target.value; render(); });
 document.querySelectorAll("[data-f]").forEach(b => b.onclick = () => {
   filter = b.dataset.f;
   document.querySelectorAll("[data-f]").forEach(x => x.classList.toggle("on", x === b));
